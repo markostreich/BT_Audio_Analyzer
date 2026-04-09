@@ -5,6 +5,7 @@
 #include <arduinoFFT.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include "VisPacket.h"
 
 #define ESP_BT_NAME "ESP32 Party Music"
 
@@ -22,9 +23,6 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 I2SStream i2s;
 BluetoothA2DPSink a2dp_sink(i2s);
 
-// ===================== UART =====================
-HardwareSerial VisSerial(2);   // UART2
-
 // ===================== FFT ======================
 static constexpr uint16_t FFT_SAMPLES = 512;
 static constexpr float SAMPLE_RATE = 44100.0f;
@@ -41,21 +39,19 @@ struct AudioBlock {
 
 QueueHandle_t audioQueue = nullptr;
 
+// ===================== UART =====================
+#define SERIAL_PORT 2
+#define TRANSMITTER_PIN 17
+#define RECEIVER_PIN 16
+
+HardwareSerial VisSerial(SERIAL_PORT);
+
 // ===================== SHARED VIS DATA ==========
-static constexpr uint8_t NUM_BARS = 16;
 volatile uint8_t g_bars[NUM_BARS];
 volatile uint16_t g_peakHz = 0;
 volatile bool g_audioSeen = false;
 
 portMUX_TYPE g_barMux = portMUX_INITIALIZER_UNLOCKED;
-
-// ===================== UART PACKET ==============
-struct VisPacket {
-  uint8_t start;
-  uint8_t bars[NUM_BARS];
-  uint16_t peak;
-  uint8_t checksum;
-};
 
 // ===================== HELPERS ==================
 static inline int clampi(int v, int lo, int hi) {
@@ -93,23 +89,15 @@ void computeBandsFromFFT(double *mag, uint8_t *outBars) {
 
 void sendVisualizationFrame() {
   VisPacket pkt;
-  pkt.start = 0xAA;
-
-  uint8_t sum = pkt.start;
 
   portENTER_CRITICAL(&g_barMux);
   for (int i = 0; i < NUM_BARS; i++) {
     pkt.bars[i] = g_bars[i];
-    sum += pkt.bars[i];
   }
   pkt.peak = g_peakHz;
   portEXIT_CRITICAL(&g_barMux);
 
-  sum += (uint8_t)(pkt.peak & 0xFF);
-  sum += (uint8_t)((pkt.peak >> 8) & 0xFF);
-
-  pkt.checksum = sum;
-
+  visPacketFinalize(pkt);
   VisSerial.write((const uint8_t*)&pkt, sizeof(pkt));
 }
 
@@ -265,9 +253,8 @@ void setup() {
     Serial.println("Failed to create audio queue");
     while (true) delay(1000);
   }
-
-  // UART2: RX=16, TX=17
-  VisSerial.begin(115200, SERIAL_8N1, 16, 17);
+  
+  VisSerial.begin(115200, SERIAL_8N1, RECEIVER_PIN, TRANSMITTER_PIN);
 
   xTaskCreatePinnedToCore(
     fftTask,
