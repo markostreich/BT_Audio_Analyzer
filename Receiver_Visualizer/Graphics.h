@@ -20,7 +20,7 @@
 constexpr uint16_t NUMPIXELS = 600;
 
 /** @brief LED data pin. */
-constexpr uint8_t PIN = 21;
+constexpr uint8_t PIN = 12;
 
 /** @brief Interface to graphical hardware. */
 Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
@@ -79,6 +79,15 @@ void drawPixel(int8_t x, int8_t y, uint8_t red, uint8_t green, uint8_t blue) {
 #else
   pixels.setPixelColor(pos_x + size_x * y, pixels.Color(red, green, blue));
 #endif  // TEST_MODE
+}
+
+void drawPixel(int8_t x, int8_t y, uint32_t color) {
+  // Check if the coordinates are within the bounds of the LED panel
+  if (x >= size_x || y >= size_y || x < 0 || y < 0)
+    return;
+  // Calculate the pixel position based on the starting position (left or right)
+  const int8_t pos_x = startLeft ? (y % 2 == 0 ? x : size_x - 1 - x) : (y % 2 == 1 ? x : size_x - 1 - x);
+  pixels.setPixelColor(pos_x + size_x * y, color);
 }
 
 /**

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "VisPacket.h"
 #include "Oled.h"
+#include "LedPanel.h"
 #include "Uart.h"
 
 SharedFrame g_sharedFrame = {};
@@ -50,9 +51,8 @@ void matrixTask(void *param) {
 
     if (localFrame.frameId != lastSeenFrame) {
       lastSeenFrame = localFrame.frameId;
-
-      // TODO:
-      // renderMatrix(localFrame.pkt);
+      //ledPanelDrawBars(localFrame.pkt);
+      ledPanelDrawBarsRainbowVertical(localFrame.pkt);
     }
 
     vTaskDelay(pdMS_TO_TICKS(20));
