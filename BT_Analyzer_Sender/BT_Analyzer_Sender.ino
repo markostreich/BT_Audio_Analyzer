@@ -64,24 +64,67 @@ void computeBandsFromFFT(double *mag, uint8_t *outBars) {
     40, 56, 78, 110, 156, 220, 312, 255
   };
 
+  static double autoLevel = 0.01;  // running loudness reference
+
+  double rawBars[NUM_BARS];
+  double frameMax = 0.0;
+
   for (uint8_t b = 0; b < NUM_BARS; b++) {
     uint16_t startBin = bandEdges[b];
     uint16_t endBin = bandEdges[b + 1];
 
-    if (endBin > FFT_SAMPLES / 2 - 1) endBin = FFT_SAMPLES / 2 - 1;
+    if (endBin > FFT_SAMPLES / 2 - 1) {
+      endBin = FFT_SAMPLES / 2 - 1;
+    }
+
     if (startBin >= endBin) {
-      outBars[b] = 0;
+      rawBars[b] = 0.0;
       continue;
     }
 
     double sum = 0.0;
+
     for (uint16_t k = startBin; k < endBin; k++) {
       sum += mag[k];
     }
 
     double avg = sum / (endBin - startBin);
-    double scaled = avg * 180.0;
-    int bar = (int)scaled;
+
+    rawBars[b] = avg;
+
+    if (avg > frameMax) {
+      frameMax = avg;
+    }
+  }
+
+  // Ignore near-silence
+  if (frameMax < 0.00001) {
+    for (uint8_t b = 0; b < NUM_BARS; b++) {
+      outBars[b] = 0;
+    }
+    return;
+  }
+
+  // Automatic gain control:
+  // rise quickly when music gets louder, fall slowly when music gets quieter
+  if (frameMax > autoLevel) {
+    autoLevel = autoLevel * 0.70 + frameMax * 0.30;
+  } else {
+    autoLevel = autoLevel * 0.98 + frameMax * 0.02;
+  }
+
+  if (autoLevel < 0.00001) {
+    autoLevel = 0.00001;
+  }
+
+  for (uint8_t b = 0; b < NUM_BARS; b++) {
+    double normalized = rawBars[b] / autoLevel;
+
+    // Optional curve: makes weaker frequencies more visible
+    normalized = sqrt(normalized);
+
+    int bar = (int)(normalized * 60.0);
+
     bar = clampi(bar, 0, 60);
     outBars[b] = (uint8_t)bar;
   }
