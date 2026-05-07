@@ -1,12 +1,38 @@
 #pragma once
 
+#include "JsonAdapter.h"
+#include "LedPanelObjects.h"
+#include "Buttons.h"
 #include "Graphics.h"
 #include "VisPacket.h"
 
-uint16_t localBrightness = 20;
-
 long firstPixelHue = 0;
 constexpr long maxPixelHue = 5 * 65536;
+
+boolean notInitializedCassette = true;
+LedPanelObject cassette;
+LedPanelObject cassetteWheelA;
+LedPanelObject cassetteWheelB;
+float angleCassetteWheel = 0.0;
+float angleCassetteWheelB = 0.0;
+
+inline void ledPanelDrawCassette() {
+  if (notInitializedCassette) {
+    cassette = parseLedPanelJson(cassetteJson);
+    cassetteWheelA = parseLedPanelJson(cassetteWheelAJson);
+    cassetteWheelB = parseLedPanelJson(cassetteWheelBJson);
+    notInitializedCassette = false;
+  }
+  pixels.clear();
+  drawRotatedObject(&cassetteWheelA, angleCassetteWheel);
+  drawRotatedObject(&cassetteWheelB, angleCassetteWheelB);
+  drawObject(&cassette);
+  angleCassetteWheel -= 18.0;
+  angleCassetteWheelB -= 17.0;
+  pixels.setBrightness(30);
+  pixels.show();
+  delay(1);
+}
 
 inline void ledPanelDrawBars(const VisPacket &pkt) {
   pixels.clear();
@@ -30,7 +56,7 @@ inline void ledPanelDrawBars(const VisPacket &pkt) {
         drawPixel(x_pos, y_pos, 100, g, 30);
     }
   }
-  pixels.setBrightness(localBrightness);
+  pixels.setBrightness(brightness);
   pixels.show();
 }
 
@@ -57,7 +83,7 @@ inline void ledPanelDrawBarsRainbow(const VisPacket &pkt) {
       }
     }
   }
-  pixels.setBrightness(localBrightness);
+  pixels.setBrightness(brightness);
   pixels.show();
   firstPixelHue += 256;
 }
@@ -82,7 +108,7 @@ inline void ledPanelDrawBarsRainbowVertical(const VisPacket &pkt) {
       }
     }
   }
-  pixels.setBrightness(localBrightness);
+  pixels.setBrightness(brightness);
   pixels.show();
   firstPixelHue += 256;
 }
@@ -120,7 +146,7 @@ inline void ledPanelDrawBarsRainbowVerticalMiddle(const VisPacket &pkt) {
     }
   }
 
-  pixels.setBrightness(localBrightness);
+  pixels.setBrightness(brightness);
   pixels.show();
 
   firstPixelHue += 256;
@@ -167,7 +193,7 @@ inline void ledPanelDrawBarsRainbowVerticalMiddleMirrored(const VisPacket &pkt) 
     }
   }
 
-  pixels.setBrightness(localBrightness);
+  pixels.setBrightness(brightness);
   pixels.show();
 
   firstPixelHue += 256;
@@ -190,7 +216,7 @@ inline void ledPanelDrawBarsRainbowMiddle(const VisPacket &pkt) {
       drawPixel(14 - x_pos, y_pos, pixels.gamma32(pixels.ColorHSV(pixelHue)));
     }
   }
-  pixels.setBrightness(localBrightness);
+  pixels.setBrightness(brightness);
   pixels.show();
   firstPixelHue += 256;
 }
@@ -215,7 +241,7 @@ inline void ledPanelDrawBarsMiddle(const VisPacket &pkt) {
       //drawPixel(x_pos + 1, y_pos, r, g, b);
     }
   }
-  pixels.setBrightness(localBrightness);
+  pixels.setBrightness(brightness);
   pixels.show();
 }
 
@@ -238,7 +264,7 @@ inline void ledPanelDrawBarsVertical(const VisPacket &pkt) {
       //drawPixel(x_pos + 1, y_pos, r, g, b);
     }
   }
-  pixels.setBrightness(localBrightness);
+  pixels.setBrightness(brightness);
   pixels.show();
 }
 
@@ -250,9 +276,12 @@ inline uint8_t clampByte(int v) {
 
 inline void ledPanelDrawAudioBlob(const VisPacket &pkt) {
   pixels.clear();
+
+  /*
   for (int8_t y = 0; y < size_y; ++y)
     for (int8_t x = 0; x < size_x; ++x)
-      drawPixel(x, y, 0, 0, 2);
+      drawPixel(x, y, 2, 0, 2);
+  */
 
   // ---------- audio feature extraction ----------
   int bass = 0;
@@ -350,7 +379,7 @@ inline void ledPanelDrawAudioBlob(const VisPacket &pkt) {
     }
   }
 
-  pixels.setBrightness(100);
+  pixels.setBrightness(brightness);
   pixels.show();
 }
 
@@ -434,7 +463,7 @@ inline void ledPanelDrawDiscoBall(const VisPacket &pkt) {
     }
   }
 
-  pixels.setBrightness(localBrightness);
+  pixels.setBrightness(brightness);
   pixels.show();
 }
 
@@ -643,6 +672,6 @@ inline void ledPanelDrawTwoAudioBlobs(const VisPacket &pkt) {
     }
   }
 
-  pixels.setBrightness(100);
+  pixels.setBrightness(brightness);
   pixels.show();
 }

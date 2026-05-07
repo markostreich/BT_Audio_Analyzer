@@ -57,6 +57,8 @@ void matrixTask(void *param) {
 
     if (localFrame.frameId != lastSeenFrame) {
       lastSeenFrame = localFrame.frameId;
+      if (DRAW_CASSETTE != localCurrentPanelMode)
+        notInitializedCassette = true;
       switch (localCurrentPanelMode) {
         case DRAW_BARS_RAINBOW_VERTICAL:
           ledPanelDrawBarsRainbowVertical(localFrame.pkt);
@@ -67,10 +69,10 @@ void matrixTask(void *param) {
         case DRAW_BARS_RAINBOW_MIDDLE_MIRRORED:
           ledPanelDrawBarsRainbowVerticalMiddleMirrored(localFrame.pkt);
           break;
-        case DRAW_BARS:
-          ledPanelDrawBars(localFrame.pkt);
+        case DRAW_CASSETTE:
+          ledPanelDrawCassette();
           break;
-        case DRAW_BARS_MIDDLE:
+        case DRAW_BLOBS:
           ledPanelDrawTwoAudioBlobs(localFrame.pkt);
           break;
         case DRAW_BARS_RAINBOW:

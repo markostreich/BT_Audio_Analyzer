@@ -12,9 +12,6 @@
 #endif                  // __AVR__
 #endif                  // not TEST_MODE
 
-/* LED Potentiometer */
-#define POT 13
-
 #ifndef TEST_MODE
 /** @brief Amount of pixels in the LED panel. */
 constexpr uint16_t NUMPIXELS = 600;
@@ -25,9 +22,6 @@ constexpr uint8_t PIN = 12;
 /** @brief Interface to graphical hardware. */
 Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 #endif  // not TEST_MODE
-
-/** @brief Global variable for LED panel brightness. */
-uint16_t brightness = 0;
 
 /** @brief Position of the first LED in the bottommost row. */
 constexpr boolean startLeft = true;
@@ -91,38 +85,6 @@ void drawPixel(int8_t x, int8_t y, uint32_t color) {
 }
 
 /**
- * @brief Adjusts the brightness of the LED panel based on the potentiometer value.
- *
- * This function reads the potentiometer value and maps it to a range suitable for setting the LED panel's brightness.
- * It then updates the brightness if the new value differs significantly from the current brightness, within a tolerance range.
- * This approach minimizes unnecessary updates to the LED panel, improving efficiency.
- *
- * @note This function is designed to be used in both normal operation and test mode. In test mode, it prints the calculated brightness value to the serial monitor instead of adjusting the LED panel's brightness.
- *
- * @warning The brightness adjustment is sensitive to small changes in the potentiometer value. Ensure the potentiometer is properly connected and calibrated for accurate brightness control.
- *
- * @bug None known.
- */
-void adjustBrightness() {
-  /* Set Brightness with potentiometer */
-  uint16_t potValue = analogRead(POT);
-  uint16_t newBrightness = map(potValue, 0, 1023, 1, 255);
-  // Update brightness if there's a significant change
-  // This threshold can be adjusted based on the desired sensitivity
-  const uint8_t brightnessThreshold = 1;
-  if (abs(brightness - newBrightness) > brightnessThreshold) {
-    brightness = newBrightness;
-#ifndef TEST_MODE
-    pixels.setBrightness(brightness);
-    pixels.show();
-#else
-    Serial.print("potentio: ");
-    Serial.println(brightness);
-#endif  // not TEST_MODE
-  }
-}
-
-/**
  * @brief Draws an object on a LED panel.
  *
  * This function iterates over the image data of a given LED panel object, drawing each pixel
@@ -134,7 +96,6 @@ void adjustBrightness() {
  * @param ledPanelObject A pointer to the LED panel object containing the image data to be drawn.
  */
 void drawObject(const LedPanelObject* ledPanelObject) {
-  adjustBrightness();
   const int8_t pos_x = ledPanelObject->pos_x;
   const int8_t pos_y = ledPanelObject->pos_y;
   for (int i = 0; i < ledPanelObject->imageData_length; i += 5) {
@@ -145,7 +106,6 @@ void drawObject(const LedPanelObject* ledPanelObject) {
     const int8_t b = ledPanelObject->imageData[i + 4];
     drawPixel(x, y, r, g, b);
   }
-  pixels.show();
 }
 
 /**
@@ -186,7 +146,6 @@ void drawRotatedPixel(int8_t x, int8_t y, float rot_x, float rot_y, float cosTau
 }
 
 void drawRotatedObject(const LedPanelObject* ledPanelObject, float angle) {
-  adjustBrightness();
   float angle_rad = angle * M_PI / 180.0;
   float cosTau = cos(angle_rad);
   float sinTau = sin(angle_rad);
@@ -201,15 +160,13 @@ void drawRotatedObject(const LedPanelObject* ledPanelObject, float angle) {
     const int8_t b = ledPanelObject->imageData[i + 4];
     drawRotatedPixel(x, y, ledPanelObject->rotationPoint_x, ledPanelObject->rotationPoint_y, cosTau, sinTau, r, g, b, doFill);
   }
-  pixels.show();
 }
 
 /**
  * @brief Sets the color of all pixels on the LED panel.
  *
  * This function iterates over each pixel on the LED panel and sets its color to the specified RGB values.
- * It first adjusts the brightness of the LED panel using the `adjustBrightness` function, ensuring that the brightness is set according to the current potentiometer value.
- * Then, it calls `drawPixel` for each pixel on the panel, setting its color to the provided RGB values.
+ * It calls `drawPixel` for each pixel on the panel, setting its color to the provided RGB values.
  *
  * @param red The red component of the color.
  * @param green The green component of the color.
@@ -222,7 +179,6 @@ void drawRotatedObject(const LedPanelObject* ledPanelObject, float angle) {
  * @bug None known.
  */
 void colorAll(uint8_t red, uint8_t green, uint8_t blue) {
-  adjustBrightness();
   for (int8_t y = 0; y < size_y; ++y)
     for (int8_t x = 0; x < size_x; ++x)
       drawPixel(x, y, red, green, blue);
