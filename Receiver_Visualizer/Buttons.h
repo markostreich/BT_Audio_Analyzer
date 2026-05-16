@@ -4,23 +4,26 @@
 #include "esp32-hal-gpio.h"
 #include <stdint.h>
 
-/* LED Potentiometer */
-#define POT 13
+constexpr uint8_t POT = 13;
 
-#define SWITCH_BUTTON 2
+constexpr uint8_t BUTTON_MATRIX_UART_PORT = 1;
+constexpr uint32_t BUTTON_MATRIX_UART_BAUD = 115200;
+constexpr int8_t BUTTON_MATRIX_UART_RX = 4;
+constexpr int8_t BUTTON_MATRIX_UART_TX = -1;
 
-#define DRAW_BARS_RAINBOW_VERTICAL 0
-#define DRAW_BARS_RAINBOW_MIDDLE 1
-#define DRAW_BARS_RAINBOW_MIDDLE_MIRRORED 2
-#define DRAW_CASSETTE 3
-#define DRAW_BLOBS 4
-#define DRAW_BARS_RAINBOW 5
-#define DRAW_AUDIO_BLOB 6
+constexpr uint8_t DRAW_BARS_RAINBOW_VERTICAL = 0;
+constexpr uint8_t DRAW_BARS_RAINBOW_MIDDLE = 1;
+constexpr uint8_t DRAW_BARS_RAINBOW_MIDDLE_MIRRORED = 2;
+constexpr uint8_t DRAW_CASSETTE = 3;
+constexpr uint8_t DRAW_BLOBS = 4;
+constexpr uint8_t DRAW_BARS_RAINBOW = 5;
+constexpr uint8_t DRAW_AUDIO_BLOB = 6;
+
+constexpr uint8_t MATRIX_SWITCH_BUTTON = 1;
+constexpr uint8_t FIRST_MATRIX_PANEL_BUTTON = 2;
 
 portMUX_TYPE g_readButtonsMux = portMUX_INITIALIZER_UNLOCKED;
-
-const uint8_t switchButton = SWITCH_BUTTON;
-volatile bool switchPressed = false;
+inline HardwareSerial ButtonMatrixSerial(BUTTON_MATRIX_UART_PORT);
 
 const uint8_t panelModes[] = {
   DRAW_BARS_RAINBOW_VERTICAL,
@@ -33,12 +36,9 @@ const uint8_t panelModes[] = {
 };
 
 const uint8_t panelModeCount = sizeof(panelModes) / sizeof(panelModes[0]);
-const uint8_t firstMatrixPanelButton = 1;
 
-/** @brief Global variable for LED panel brightness. */
 uint16_t brightness = 0;
-
-volatile uint8_t currentPanelMode = 0;
+volatile uint8_t currentPanelMode = DRAW_BARS_RAINBOW_VERTICAL;
 
 void buttonsTask(void *param);
 
@@ -46,20 +46,6 @@ inline void setPanelMode(uint8_t panelMode) {
   portENTER_CRITICAL(&g_readButtonsMux);
   currentPanelMode = panelMode;
   portEXIT_CRITICAL(&g_readButtonsMux);
-}
-
-inline bool setPanelModeFromMatrixButton(uint8_t button) {
-  if (button < firstMatrixPanelButton) {
-    return false;
-  }
-
-  const uint8_t panelModeIndex = button - firstMatrixPanelButton;
-  if (panelModeIndex >= panelModeCount) {
-    return false;
-  }
-
-  setPanelMode(panelModes[panelModeIndex]);
-  return true;
 }
 
 inline void selectNextPanelMode() {
@@ -79,64 +65,77 @@ inline void selectNextPanelMode() {
   portEXIT_CRITICAL(&g_readButtonsMux);
 }
 
-inline void readButtonMatrix() {
-  static uint16_t matrixButton = 0;
-  static bool hasMatrixButtonDigits = false;
+inline bool handleMatrixButton(uint8_t button) {
+  if (button == MATRIX_SWITCH_BUTTON) {
+    selectNextPanelMode();
+    return true;
+  }
 
-  while (Serial.available()) {
-    const uint8_t value = (uint8_t)Serial.read();
+  if (button < FIRST_MATRIX_PANEL_BUTTON) {
+    return false;
+  }
+
+  const uint8_t panelModeIndex = button - FIRST_MATRIX_PANEL_BUTTON;
+  if (panelModeIndex >= panelModeCount) {
+    return false;
+  }
+
+  setPanelMode(panelModes[panelModeIndex]);
+  return true;
+}
+
+inline void readButtonMatrix() {
+  static uint16_t parsedButton = 0;
+  static bool hasDigits = false;
+
+  while (ButtonMatrixSerial.available()) {
+    const uint8_t value = (uint8_t)ButtonMatrixSerial.read();
 
     if (value >= '0' && value <= '9') {
-      hasMatrixButtonDigits = true;
-      matrixButton = (matrixButton * 10) + (value - '0');
-      if (matrixButton > 255) {
-        matrixButton = 0;
-        hasMatrixButtonDigits = false;
+      hasDigits = true;
+      parsedButton = (parsedButton * 10) + (value - '0');
+
+      if (parsedButton > 255) {
+        parsedButton = 0;
+        hasDigits = false;
       }
       continue;
     }
 
-    if (hasMatrixButtonDigits) {
-      setPanelModeFromMatrixButton((uint8_t)matrixButton);
-      matrixButton = 0;
-      hasMatrixButtonDigits = false;
+    if (hasDigits) {
+      handleMatrixButton((uint8_t)parsedButton);
+      parsedButton = 0;
+      hasDigits = false;
       continue;
     }
 
-    setPanelModeFromMatrixButton(value);
+    handleMatrixButton(value);
   }
 }
 
-/**
- * @brief Adjusts the brightness of the LED panel based on the potentiometer value.
- *
- * This function reads the potentiometer value and maps it to a range suitable for setting the LED panel's brightness.
- * It then updates the brightness if the new value differs significantly from the current brightness, within a tolerance range.
- * This approach minimizes unnecessary updates to the LED panel, improving efficiency.
- *
- * @note This function is designed to be used in both normal operation and test mode. In test mode, it prints the calculated brightness value to the serial monitor instead of adjusting the LED panel's brightness.
- *
- * @warning The brightness adjustment is sensitive to small changes in the potentiometer value. Ensure the potentiometer is properly connected and calibrated for accurate brightness control.
- *
- * @bug None known.
- */
-void adjustBrightness() {
-  /* Set Brightness with potentiometer */
-  uint16_t potValue = analogRead(POT);
-  uint16_t newBrightness = map(potValue, 0, 1023, 1, 255);
-  // Update brightness if there's a significant change
-  // This threshold can be adjusted based on the desired sensitivity
-  const uint8_t brightnessThreshold = 1;
-  if (abs(brightness - newBrightness) > brightnessThreshold) {
+inline void adjustBrightness() {
+  const uint16_t potValue = analogRead(POT);
+  const uint16_t newBrightness = map(potValue, 0, 1023, 1, 255);
+  const uint16_t delta = brightness > newBrightness
+    ? brightness - newBrightness
+    : newBrightness - brightness;
+
+  if (delta > 1) {
     brightness = newBrightness;
   }
 }
 
-void initButtons() {
-  // Button wired between GPIO 2 and GND
-  // Uses ESP32 internal pull-up resistor
-  pinMode(switchButton, INPUT_PULLUP);
+inline void initButtonMatrix() {
+  ButtonMatrixSerial.begin(
+    BUTTON_MATRIX_UART_BAUD,
+    SERIAL_8N1,
+    BUTTON_MATRIX_UART_RX,
+    BUTTON_MATRIX_UART_TX
+  );
+}
 
+void initButtons() {
+  initButtonMatrix();
   adjustBrightness();
 
   xTaskCreatePinnedToCore(
@@ -152,20 +151,6 @@ void initButtons() {
 
 void buttonsTask(void *param) {
   while (true) {
-    // INPUT_PULLUP means:
-    // not pressed = HIGH
-    // pressed     = LOW
-    bool isPressed = digitalRead(switchButton) == LOW;
-
-    if (isPressed && !switchPressed) {
-      switchPressed = true;
-
-      selectNextPanelMode();
-
-    } else if (!isPressed) {
-      switchPressed = false;
-    }
-
     readButtonMatrix();
     adjustBrightness();
 
