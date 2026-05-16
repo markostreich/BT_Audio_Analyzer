@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Arduino.h>
 #include "esp32-hal-gpio.h"
 #include <stdint.h>
 
@@ -32,6 +33,7 @@ const uint8_t panelModes[] = {
 };
 
 const uint8_t panelModeCount = sizeof(panelModes) / sizeof(panelModes[0]);
+const uint8_t firstMatrixPanelButton = 1;
 
 /** @brief Global variable for LED panel brightness. */
 uint16_t brightness = 0;
@@ -39,6 +41,71 @@ uint16_t brightness = 0;
 volatile uint8_t currentPanelMode = 0;
 
 void buttonsTask(void *param);
+
+inline void setPanelMode(uint8_t panelMode) {
+  portENTER_CRITICAL(&g_readButtonsMux);
+  currentPanelMode = panelMode;
+  portEXIT_CRITICAL(&g_readButtonsMux);
+}
+
+inline bool setPanelModeFromMatrixButton(uint8_t button) {
+  if (button < firstMatrixPanelButton) {
+    return false;
+  }
+
+  const uint8_t panelModeIndex = button - firstMatrixPanelButton;
+  if (panelModeIndex >= panelModeCount) {
+    return false;
+  }
+
+  setPanelMode(panelModes[panelModeIndex]);
+  return true;
+}
+
+inline void selectNextPanelMode() {
+  uint8_t nextPanelMode = panelModes[0];
+
+  portENTER_CRITICAL(&g_readButtonsMux);
+
+  for (uint8_t i = 0; i < panelModeCount; i++) {
+    if (panelModes[i] == currentPanelMode) {
+      nextPanelMode = panelModes[(i + 1) % panelModeCount];
+      break;
+    }
+  }
+
+  currentPanelMode = nextPanelMode;
+
+  portEXIT_CRITICAL(&g_readButtonsMux);
+}
+
+inline void readButtonMatrix() {
+  static uint16_t matrixButton = 0;
+  static bool hasMatrixButtonDigits = false;
+
+  while (Serial.available()) {
+    const uint8_t value = (uint8_t)Serial.read();
+
+    if (value >= '0' && value <= '9') {
+      hasMatrixButtonDigits = true;
+      matrixButton = (matrixButton * 10) + (value - '0');
+      if (matrixButton > 255) {
+        matrixButton = 0;
+        hasMatrixButtonDigits = false;
+      }
+      continue;
+    }
+
+    if (hasMatrixButtonDigits) {
+      setPanelModeFromMatrixButton((uint8_t)matrixButton);
+      matrixButton = 0;
+      hasMatrixButtonDigits = false;
+      continue;
+    }
+
+    setPanelModeFromMatrixButton(value);
+  }
+}
 
 /**
  * @brief Adjusts the brightness of the LED panel based on the potentiometer value.
@@ -93,19 +160,13 @@ void buttonsTask(void *param) {
     if (isPressed && !switchPressed) {
       switchPressed = true;
 
-      portENTER_CRITICAL(&g_readButtonsMux);
-
-      currentPanelMode++;
-      if (currentPanelMode >= panelModeCount) {
-        currentPanelMode = 0;
-      }
-
-      portEXIT_CRITICAL(&g_readButtonsMux);
+      selectNextPanelMode();
 
     } else if (!isPressed) {
       switchPressed = false;
     }
 
+    readButtonMatrix();
     adjustBrightness();
 
     vTaskDelay(pdMS_TO_TICKS(10));
