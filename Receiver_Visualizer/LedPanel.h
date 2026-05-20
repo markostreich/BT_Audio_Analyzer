@@ -16,7 +16,22 @@ LedPanelObject cassetteWheelB;
 float angleCassetteWheel = 0.0;
 float angleCassetteWheelB = 0.0;
 
-inline void ledPanelDrawCassette() {
+inline bool cassetteHasMusic(const VisPacket &pkt) {
+  int total = 0;
+  uint8_t maxBar = 0;
+
+  for (uint8_t i = 0; i < NUM_BARS; i++) {
+    total += pkt.bars[i];
+    if (pkt.bars[i] > maxBar) {
+      maxBar = pkt.bars[i];
+    }
+  }
+
+  const uint8_t energy = total / NUM_BARS;
+  return energy > 4 || maxBar > 10;
+}
+
+inline void ledPanelDrawCassette(const VisPacket &pkt) {
   if (notInitializedCassette) {
     cassette = parseLedPanelJson(cassetteJson);
     cassetteWheelA = parseLedPanelJson(cassetteWheelAJson);
@@ -27,8 +42,10 @@ inline void ledPanelDrawCassette() {
   drawRotatedObject(&cassetteWheelA, angleCassetteWheel);
   drawRotatedObject(&cassetteWheelB, angleCassetteWheelB);
   drawObject(&cassette);
-  angleCassetteWheel -= 19.0;
-  angleCassetteWheelB -= 17.0;
+  if (cassetteHasMusic(pkt)) {
+    angleCassetteWheel -= 19.0;
+    angleCassetteWheelB -= 17.0;
+  }
   pixels.setBrightness(brightness);
   pixels.show();
   delay(25);
@@ -217,7 +234,7 @@ inline void ledPanelDrawPeakTrail(const VisPacket &pkt) {
       continue;
     }
 
-    const int y = constrain(map(value, 0, 60, 0, size_y - 1), 0, size_y - 1);
+    const int y = constrain(map(value, 0, 30, 0, size_y - 1), 0, size_y - 1);
     const uint8_t ageFade = map(x, 0, size_x - 1, 35, 255);
     const int pixelHue = firstPixelHue + hueOffset * 180 + x * 900;
     const uint32_t color = pixels.gamma32(pixels.ColorHSV(pixelHue, 255, ageFade));

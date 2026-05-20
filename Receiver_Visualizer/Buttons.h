@@ -19,8 +19,6 @@ constexpr uint8_t DRAW_AUDIO_BLOB = 6;
 constexpr uint8_t DRAW_OSCILLOSCOPE = 7;
 constexpr uint8_t DRAW_PEAK_TRAIL = 8;
 constexpr uint8_t DRAW_SCROLLING_WAVEFORM = 9;
-constexpr uint8_t DRAW_SPECTRUM_HISTORY = 10;
-constexpr uint8_t DRAW_ENVELOPE = 11;
 
 constexpr uint8_t MATRIX_SWITCH_BUTTON = 1;
 constexpr uint8_t FIRST_MATRIX_PANEL_BUTTON = 2;
@@ -30,8 +28,6 @@ constexpr uint8_t BRIGHTNESS_RESET_BUTTON = 11;
 constexpr uint8_t OSCILLOSCOPE_BUTTON = 12;
 constexpr uint8_t PEAK_TRAIL_BUTTON = 13;
 constexpr uint8_t SCROLLING_WAVEFORM_BUTTON = 14;
-constexpr uint8_t SPECTRUM_HISTORY_BUTTON = 15;
-constexpr uint8_t ENVELOPE_BUTTON = 16;
 constexpr uint8_t DEFAULT_BRIGHTNESS = 32;
 constexpr uint8_t BRIGHTNESS_STEP = 8;
 
@@ -48,9 +44,7 @@ const uint8_t panelModes[] = {
   DRAW_AUDIO_BLOB,
   DRAW_OSCILLOSCOPE,
   DRAW_PEAK_TRAIL,
-  DRAW_SCROLLING_WAVEFORM,
-  DRAW_SPECTRUM_HISTORY,
-  DRAW_ENVELOPE
+  DRAW_SCROLLING_WAVEFORM
 };
 
 const uint8_t panelModeCount = sizeof(panelModes) / sizeof(panelModes[0]);
@@ -125,16 +119,6 @@ inline bool handleMatrixButton(uint8_t button) {
 
   if (button == SCROLLING_WAVEFORM_BUTTON) {
     setPanelMode(DRAW_SCROLLING_WAVEFORM);
-    return true;
-  }
-
-  if (button == SPECTRUM_HISTORY_BUTTON) {
-    setPanelMode(DRAW_SPECTRUM_HISTORY);
-    return true;
-  }
-
-  if (button == ENVELOPE_BUTTON) {
-    setPanelMode(DRAW_ENVELOPE);
     return true;
   }
 

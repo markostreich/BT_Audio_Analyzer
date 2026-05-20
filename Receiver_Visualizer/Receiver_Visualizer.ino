@@ -45,6 +45,7 @@ void matrixTask(void *param) {
   uint32_t lastSeenFrame = 0;
   SharedFrame localFrame;
   uint8_t localCurrentPanelMode = DRAW_BARS_RAINBOW_VERTICAL;
+  uint8_t lastPanelMode = DRAW_BARS_RAINBOW_VERTICAL;
 
   while (true) {
     portENTER_CRITICAL(&g_frameMux);
@@ -55,8 +56,12 @@ void matrixTask(void *param) {
     localCurrentPanelMode = currentPanelMode;
     portEXIT_CRITICAL(&g_readButtonsMux);
 
-    if (localFrame.frameId != lastSeenFrame) {
+    const bool frameChanged = localFrame.frameId != lastSeenFrame;
+    const bool panelModeChanged = localCurrentPanelMode != lastPanelMode;
+
+    if (frameChanged || panelModeChanged) {
       lastSeenFrame = localFrame.frameId;
+      lastPanelMode = localCurrentPanelMode;
       if (DRAW_CASSETTE != localCurrentPanelMode)
         notInitializedCassette = true;
       switch (localCurrentPanelMode) {
@@ -70,7 +75,7 @@ void matrixTask(void *param) {
           ledPanelDrawBarsRainbowVerticalMiddleMirrored(localFrame.pkt);
           break;
         case DRAW_CASSETTE:
-          ledPanelDrawCassette();
+          ledPanelDrawCassette(localFrame.pkt);
           break;
         case DRAW_BLOBS:
           ledPanelDrawTwoAudioBlobs(localFrame.pkt);
@@ -89,12 +94,6 @@ void matrixTask(void *param) {
           break;
         case DRAW_SCROLLING_WAVEFORM:
           ledPanelDrawScrollingWaveform(localFrame.pkt);
-          break;
-        case DRAW_SPECTRUM_HISTORY:
-          ledPanelDrawSpectrumHistory(localFrame.pkt);
-          break;
-        case DRAW_ENVELOPE:
-          ledPanelDrawEnvelope(localFrame.pkt);
           break;
         default:
           ledPanelDrawBarsRainbowVertical(localFrame.pkt);
