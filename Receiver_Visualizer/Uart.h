@@ -4,7 +4,7 @@
 #include "VisPacket.h"
 
 #define VIS_UART_PORT 2
-#define VIS_UART_BAUD 115200
+#define VIS_UART_BAUD 460800
 #define VIS_UART_RX   16
 #define VIS_UART_TX   17
 

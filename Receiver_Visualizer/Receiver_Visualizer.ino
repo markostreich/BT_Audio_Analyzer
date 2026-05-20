@@ -81,12 +81,27 @@ void matrixTask(void *param) {
         case DRAW_AUDIO_BLOB:
           ledPanelDrawAudioBlob(localFrame.pkt);
           break;
+        case DRAW_OSCILLOSCOPE:
+          ledPanelDrawOscilloscope(localFrame.pkt);
+          break;
+        case DRAW_PEAK_TRAIL:
+          ledPanelDrawPeakTrail(localFrame.pkt);
+          break;
+        case DRAW_SCROLLING_WAVEFORM:
+          ledPanelDrawScrollingWaveform(localFrame.pkt);
+          break;
+        case DRAW_SPECTRUM_HISTORY:
+          ledPanelDrawSpectrumHistory(localFrame.pkt);
+          break;
+        case DRAW_ENVELOPE:
+          ledPanelDrawEnvelope(localFrame.pkt);
+          break;
         default:
           ledPanelDrawBarsRainbowVertical(localFrame.pkt);
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(20));
+    vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
 

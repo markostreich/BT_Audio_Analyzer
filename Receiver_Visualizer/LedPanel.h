@@ -27,11 +27,11 @@ inline void ledPanelDrawCassette() {
   drawRotatedObject(&cassetteWheelA, angleCassetteWheel);
   drawRotatedObject(&cassetteWheelB, angleCassetteWheelB);
   drawObject(&cassette);
-  angleCassetteWheel -= 18.0;
+  angleCassetteWheel -= 19.0;
   angleCassetteWheelB -= 17.0;
-  pixels.setBrightness(30);
+  pixels.setBrightness(brightness);
   pixels.show();
-  delay(1);
+  delay(25);
 }
 
 inline void ledPanelDrawBars(const VisPacket &pkt) {
@@ -111,6 +111,250 @@ inline void ledPanelDrawBarsRainbowVertical(const VisPacket &pkt) {
   pixels.setBrightness(brightness);
   pixels.show();
   firstPixelHue += 256;
+}
+
+inline void drawLineOnPanel(int x0, int y0, int x1, int y1, uint8_t r, uint8_t g, uint8_t b) {
+  int dx = abs(x1 - x0);
+  int sx = x0 < x1 ? 1 : -1;
+  int dy = -abs(y1 - y0);
+  int sy = y0 < y1 ? 1 : -1;
+  int err = dx + dy;
+
+  while (true) {
+    if (x0 >= 0 && x0 < size_x && y0 >= 0 && y0 < size_y) {
+      drawPixel(x0, y0, r, g, b);
+    }
+
+    if (x0 == x1 && y0 == y1) {
+      break;
+    }
+
+    int e2 = 2 * err;
+
+    if (e2 >= dy) {
+      err += dy;
+      x0 += sx;
+    }
+
+    if (e2 <= dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
+inline void ledPanelDrawOscilloscope(const VisPacket &pkt) {
+  pixels.clear();
+
+  for (int y = 0; y < size_y; y++) {
+    for (int x = 0; x < size_x; x++) {
+      drawPixel(x, y, 0, 0, 2);
+    }
+  }
+
+  int total = 0;
+  for (int i = 0; i < NUM_BARS; i++) {
+    total += pkt.bars[i];
+  }
+
+  const int energy = constrain(total / NUM_BARS, 0, 60);
+  const uint8_t traceR = 0;
+  const uint8_t traceG = constrain(120 + energy * 2, 0, 255);
+  const uint8_t traceB = constrain(180 + energy, 0, 255);
+  const int centerY = size_y / 2;
+  int prevX = 0;
+  int prevY = centerY;
+
+  for (int x = 0; x < size_x; x++) {
+    const int sampleIndex = map(x, 0, size_x - 1, 0, NUM_SCOPE_SAMPLES - 1);
+    int y = map(pkt.scope[sampleIndex], 0, 255, size_y - 1, 0);
+
+    y = constrain(y, 0, size_y - 1);
+
+    if (x > 0) {
+      drawLineOnPanel(prevX, prevY, x, y, traceR, traceG, traceB);
+    }
+
+    drawPixel(x, y, traceR, traceG, traceB);
+
+    prevX = x;
+    prevY = y;
+  }
+
+  pixels.setBrightness(brightness);
+  pixels.show();
+}
+
+inline void ledPanelDrawPeakTrail(const VisPacket &pkt) {
+  static uint8_t trail[size_x] = {0};
+  static uint8_t hueOffset = 0;
+
+  int total = 0;
+  int bass = 0;
+
+  for (uint8_t i = 0; i < NUM_BARS; i++) {
+    total += pkt.bars[i];
+  }
+
+  for (uint8_t i = 0; i < 4; i++) {
+    bass += pkt.bars[i];
+  }
+
+  const uint8_t energy = constrain(total / NUM_BARS, 0, 60);
+  const uint8_t bassLevel = constrain(bass / 4, 0, 60);
+  const uint8_t newPoint = constrain((energy * 3 + bassLevel * 2) / 5, 0, 60);
+
+  for (uint8_t x = 0; x < size_x - 1; x++) {
+    trail[x] = trail[x + 1];
+  }
+  trail[size_x - 1] = newPoint;
+
+  pixels.clear();
+
+  for (uint8_t x = 0; x < size_x; x++) {
+    const uint8_t value = trail[x];
+    if (value == 0) {
+      continue;
+    }
+
+    const int y = constrain(map(value, 0, 60, 0, size_y - 1), 0, size_y - 1);
+    const uint8_t ageFade = map(x, 0, size_x - 1, 35, 255);
+    const int pixelHue = firstPixelHue + hueOffset * 180 + x * 900;
+    const uint32_t color = pixels.gamma32(pixels.ColorHSV(pixelHue, 255, ageFade));
+
+    drawPixel(x, y, color);
+
+    if (y > 0 && value > 18) {
+      drawPixel(x, y - 1, 0, ageFade / 4, ageFade / 2);
+    }
+    if (y < size_y - 1 && value > 30) {
+      drawPixel(x, y + 1, 0, ageFade / 5, ageFade / 3);
+    }
+  }
+
+  hueOffset++;
+  pixels.setBrightness(brightness);
+  pixels.show();
+}
+
+inline uint8_t packetEnergy(const VisPacket &pkt) {
+  int total = 0;
+  for (uint8_t i = 0; i < NUM_BARS; i++) {
+    total += pkt.bars[i];
+  }
+  return constrain(total / NUM_BARS, 0, 60);
+}
+
+inline void ledPanelDrawScrollingWaveform(const VisPacket &pkt) {
+  static uint8_t history[size_x] = {128};
+  static bool skipFrame = false;
+
+  skipFrame = !skipFrame;
+  if (!skipFrame) {
+    for (uint8_t x = 0; x < size_x - 1; x++) {
+      history[x] = history[x + 1];
+    }
+    history[size_x - 1] = pkt.scope[NUM_SCOPE_SAMPLES - 1];
+  }
+
+  pixels.clear();
+
+  const uint8_t energy = packetEnergy(pkt);
+  const uint8_t traceG = constrain(90 + energy * 2, 0, 255);
+  const uint8_t traceB = constrain(130 + energy * 2, 0, 255);
+
+  int prevY = map(history[0], 0, 255, size_y - 1, 0);
+  for (uint8_t x = 1; x < size_x; x++) {
+    const int y = constrain(map(history[x], 0, 255, size_y - 1, 0), 0, size_y - 1);
+    drawLineOnPanel(x - 1, prevY, x, y, 0, traceG, traceB);
+    prevY = y;
+  }
+
+  pixels.setBrightness(brightness);
+  pixels.show();
+}
+
+inline void ledPanelDrawSpectrumHistory(const VisPacket &pkt) {
+  static uint8_t history[size_x][3] = {};
+
+  int bass = 0;
+  int mid = 0;
+  int high = 0;
+
+  for (uint8_t i = 0; i < 4; i++) {
+    bass += pkt.bars[i];
+  }
+  for (uint8_t i = 4; i < 10; i++) {
+    mid += pkt.bars[i];
+  }
+  for (uint8_t i = 10; i < NUM_BARS; i++) {
+    high += pkt.bars[i];
+  }
+
+  for (uint8_t x = 0; x < size_x - 1; x++) {
+    history[x][0] = history[x + 1][0];
+    history[x][1] = history[x + 1][1];
+    history[x][2] = history[x + 1][2];
+  }
+
+  history[size_x - 1][0] = constrain(bass / 4, 0, 60);
+  history[size_x - 1][1] = constrain(mid / 6, 0, 60);
+  history[size_x - 1][2] = constrain(high / 6, 0, 60);
+
+  pixels.clear();
+
+  for (uint8_t x = 0; x < size_x; x++) {
+    const uint8_t ageFade = map(x, 0, size_x - 1, 45, 255);
+    const uint8_t r = (history[x][2] * ageFade) / 60;
+    const uint8_t g = (history[x][1] * ageFade) / 70;
+    const uint8_t b = (history[x][0] * ageFade) / 55;
+    const uint8_t height = constrain((history[x][0] + history[x][1] + history[x][2]) / 3, 0, 60);
+    const int h = map(height, 0, 60, 0, size_y);
+
+    for (int y = 0; y < h; y++) {
+      drawPixel(x, y, r, g, b);
+    }
+  }
+
+  pixels.setBrightness(brightness);
+  pixels.show();
+}
+
+inline void ledPanelDrawEnvelope(const VisPacket &pkt) {
+  static uint8_t history[size_x] = {0};
+  static float smoothEnergy = 0.0f;
+
+  const uint8_t energy = packetEnergy(pkt);
+  smoothEnergy = smoothEnergy * 0.88f + energy * 0.12f;
+
+  for (uint8_t x = 0; x < size_x - 1; x++) {
+    history[x] = history[x + 1];
+  }
+  history[size_x - 1] = constrain((int)smoothEnergy, 0, 60);
+
+  pixels.clear();
+
+  const int centerY = size_y / 2;
+  int prevTop = centerY;
+  int prevBottom = centerY;
+
+  for (uint8_t x = 0; x < size_x; x++) {
+    const int radius = map(history[x], 0, 60, 0, centerY);
+    const int top = constrain(centerY + radius, 0, size_y - 1);
+    const int bottom = constrain(centerY - radius, 0, size_y - 1);
+    const uint8_t fade = map(x, 0, size_x - 1, 35, 255);
+
+    if (x > 0) {
+      drawLineOnPanel(x - 1, prevTop, x, top, fade, fade / 2, 20);
+      drawLineOnPanel(x - 1, prevBottom, x, bottom, 20, fade / 2, fade);
+    }
+
+    prevTop = top;
+    prevBottom = bottom;
+  }
+
+  pixels.setBrightness(brightness);
+  pixels.show();
 }
 
 inline void ledPanelDrawBarsRainbowVerticalMiddle(const VisPacket &pkt) {

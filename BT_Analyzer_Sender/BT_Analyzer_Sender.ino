@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <math.h>
 #include <Wire.h>
 #include "AudioTools.h"
 #include <BluetoothA2DPSink.h>
@@ -43,11 +44,13 @@ QueueHandle_t audioQueue = nullptr;
 #define SERIAL_PORT 2
 #define TRANSMITTER_PIN 17
 #define RECEIVER_PIN 16
+#define VIS_UART_BAUD 460800
 
 HardwareSerial VisSerial(SERIAL_PORT);
 
 // ===================== SHARED VIS DATA ==========
 volatile uint8_t g_bars[NUM_BARS];
+volatile uint8_t g_scope[NUM_SCOPE_SAMPLES];
 volatile uint16_t g_peakHz = 0;
 volatile bool g_audioSeen = false;
 
@@ -130,6 +133,62 @@ void computeBandsFromFFT(double *mag, uint8_t *outBars) {
   }
 }
 
+void computeScopeFromWaveform(double *samples, uint8_t *outScope) {
+  static double autoLevel = 0.05;
+  static float smoothedScope[NUM_SCOPE_SAMPLES] = {0};
+  double framePeak = 0.0;
+
+  for (uint16_t i = 0; i < FFT_SAMPLES; i++) {
+    const double value = fabs(samples[i]);
+    if (value > framePeak) {
+      framePeak = value;
+    }
+  }
+
+  if (framePeak > autoLevel) {
+    autoLevel = autoLevel * 0.85 + framePeak * 0.15;
+  } else {
+    autoLevel = autoLevel * 0.995 + framePeak * 0.005;
+  }
+
+  if (autoLevel < 0.01) {
+    autoLevel = 0.01;
+  }
+
+  for (uint8_t x = 0; x < NUM_SCOPE_SAMPLES; x++) {
+    const uint16_t startIndex = ((uint32_t)x * FFT_SAMPLES) / NUM_SCOPE_SAMPLES;
+    uint16_t endIndex = ((uint32_t)(x + 1) * FFT_SAMPLES) / NUM_SCOPE_SAMPLES;
+    if (endIndex <= startIndex) {
+      endIndex = startIndex + 1;
+    }
+    if (endIndex > FFT_SAMPLES) {
+      endIndex = FFT_SAMPLES;
+    }
+
+    double selectedSample = 0.0;
+    double selectedMagnitude = 0.0;
+
+    for (uint16_t i = startIndex; i < endIndex; i++) {
+      const double magnitude = fabs(samples[i]);
+      if (magnitude > selectedMagnitude) {
+        selectedMagnitude = magnitude;
+        selectedSample = samples[i];
+      }
+    }
+
+    const double normalized = selectedSample / autoLevel;
+    const int value = clampi((int)(128.0 + normalized * 128.0), 0, 255);
+
+    if (smoothedScope[x] == 0.0f) {
+      smoothedScope[x] = value;
+    } else {
+      smoothedScope[x] = smoothedScope[x] * 0.65f + value * 0.35f;
+    }
+
+    outScope[x] = (uint8_t)clampi((int)smoothedScope[x], 0, 255);
+  }
+}
+
 void sendVisualizationFrame() {
   VisPacket pkt;
 
@@ -137,11 +196,80 @@ void sendVisualizationFrame() {
   for (int i = 0; i < NUM_BARS; i++) {
     pkt.bars[i] = g_bars[i];
   }
+  for (int i = 0; i < NUM_SCOPE_SAMPLES; i++) {
+    pkt.scope[i] = g_scope[i];
+  }
   pkt.peak = g_peakHz;
   portEXIT_CRITICAL(&g_barMux);
 
   visPacketFinalize(pkt);
   VisSerial.write((const uint8_t*)&pkt, sizeof(pkt));
+}
+
+void removeDcOffset(double *samples) {
+  double mean = 0.0;
+
+  for (uint16_t n = 0; n < FFT_SAMPLES; n++) {
+    mean += samples[n];
+  }
+  mean /= FFT_SAMPLES;
+
+  for (uint16_t n = 0; n < FFT_SAMPLES; n++) {
+    samples[n] -= mean;
+  }
+}
+
+uint16_t computePeakHz(double *mag) {
+  double maxMag = 0.0;
+  uint16_t maxBin = 1;
+
+  for (uint16_t k = 1; k < FFT_SAMPLES / 2; k++) {
+    if (mag[k] > maxMag) {
+      maxMag = mag[k];
+      maxBin = k;
+    }
+  }
+
+  return (uint16_t)((maxBin * SAMPLE_RATE) / FFT_SAMPLES);
+}
+
+void smoothBars(const uint8_t *newBars, float *smoothedBars) {
+  for (uint8_t b = 0; b < NUM_BARS; b++) {
+    const float target = newBars[b];
+    smoothedBars[b] = smoothedBars[b] * 0.85f + target * 0.15f;
+  }
+}
+
+void publishVisualizationData(uint16_t peakHz, const float *smoothedBars, const uint8_t *scope) {
+  portENTER_CRITICAL(&g_barMux);
+
+  g_peakHz = peakHz;
+  for (uint8_t b = 0; b < NUM_BARS; b++) {
+    g_bars[b] = (uint8_t)clampi((int)smoothedBars[b], 0, 60);
+  }
+  for (uint8_t x = 0; x < NUM_SCOPE_SAMPLES; x++) {
+    g_scope[x] = scope[x];
+  }
+
+  portEXIT_CRITICAL(&g_barMux);
+}
+
+void processFftFrame(float *smoothedBars) {
+  uint8_t newScope[NUM_SCOPE_SAMPLES];
+  uint8_t newBars[NUM_BARS];
+
+  removeDcOffset(vReal);
+  computeScopeFromWaveform(vReal, newScope);
+
+  FFT.windowing(FFTWindow::Hamming, FFTDirection::Forward);
+  FFT.compute(FFTDirection::Forward);
+  FFT.complexToMagnitude();
+
+  const uint16_t peakHz = computePeakHz(vReal);
+  computeBandsFromFFT(vReal, newBars);
+  smoothBars(newBars, smoothedBars);
+  publishVisualizationData(peakHz, smoothedBars, newScope);
+  sendVisualizationFrame();
 }
 
 // ===================== CALLBACK =================
@@ -169,57 +297,25 @@ void read_data_stream(const uint8_t *data, uint32_t length) {
 void fftTask(void *param) {
   AudioBlock block;
   size_t fftIndex = 0;
-  float smoothBars[NUM_BARS] = {0};
+  float smoothedBars[NUM_BARS] = {0};
 
   while (true) {
-    if (xQueueReceive(audioQueue, &block, portMAX_DELAY) == pdTRUE) {
-      for (size_t i = 0; i + 1 < block.sample_count; i += 2) {
-        int32_t left = block.samples[i];
-        int32_t right = block.samples[i + 1];
-        int16_t mono = (left + right) / 2;
+    if (xQueueReceive(audioQueue, &block, portMAX_DELAY) != pdTRUE) {
+      continue;
+    }
 
-        vReal[fftIndex] = (double)mono / 32768.0;
-        vImag[fftIndex] = 0.0;
-        fftIndex++;
+    for (size_t i = 0; i + 1 < block.sample_count; i += 2) {
+      const int32_t left = block.samples[i];
+      const int32_t right = block.samples[i + 1];
+      const int16_t mono = (left + right) / 2;
 
-        if (fftIndex >= FFT_SAMPLES) {
-          double mean = 0.0;
-          for (uint16_t n = 0; n < FFT_SAMPLES; n++) mean += vReal[n];
-          mean /= FFT_SAMPLES;
-          for (uint16_t n = 0; n < FFT_SAMPLES; n++) vReal[n] -= mean;
+      vReal[fftIndex] = (double)mono / 32768.0;
+      vImag[fftIndex] = 0.0;
+      fftIndex++;
 
-          FFT.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-          FFT.compute(FFTDirection::Forward);
-          FFT.complexToMagnitude();
-
-          double maxMag = 0.0;
-          uint16_t maxBin = 1;
-          for (uint16_t k = 1; k < FFT_SAMPLES / 2; k++) {
-            if (vReal[k] > maxMag) {
-              maxMag = vReal[k];
-              maxBin = k;
-            }
-          }
-
-          uint16_t peakHz = (uint16_t)((maxBin * SAMPLE_RATE) / FFT_SAMPLES);
-
-          uint8_t newBars[NUM_BARS];
-          computeBandsFromFFT(vReal, newBars);
-
-          for (uint8_t b = 0; b < NUM_BARS; b++) {
-            float target = newBars[b];
-            smoothBars[b] = smoothBars[b] * 0.70f + target * 0.30f;
-          }
-
-          portENTER_CRITICAL(&g_barMux);
-          g_peakHz = peakHz;
-          for (uint8_t b = 0; b < NUM_BARS; b++) {
-            g_bars[b] = (uint8_t)clampi((int)smoothBars[b], 0, 60);
-          }
-          portEXIT_CRITICAL(&g_barMux);
-
-          fftIndex = 0;
-        }
+      if (fftIndex >= FFT_SAMPLES) {
+        processFftFrame(smoothedBars);
+        fftIndex = 0;
       }
     }
   }
@@ -268,7 +364,6 @@ void displayTask(void *param) {
     }
 
     display.display();
-    sendVisualizationFrame();
     vTaskDelay(pdMS_TO_TICKS(33));
   }
 }
@@ -277,6 +372,7 @@ void setup() {
   Serial.begin(115200);
 
   memset((void*)g_bars, 0, sizeof(g_bars));
+  memset((void*)g_scope, 128, sizeof(g_scope));
 
   Wire.begin(OLED_SDA, OLED_SCL);
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
@@ -297,7 +393,7 @@ void setup() {
     while (true) delay(1000);
   }
   
-  VisSerial.begin(115200, SERIAL_8N1, RECEIVER_PIN, TRANSMITTER_PIN);
+  VisSerial.begin(VIS_UART_BAUD, SERIAL_8N1, RECEIVER_PIN, TRANSMITTER_PIN);
 
   xTaskCreatePinnedToCore(
     fftTask,
