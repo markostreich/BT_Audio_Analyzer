@@ -46,6 +46,8 @@ void matrixTask(void *param) {
   SharedFrame localFrame;
   uint8_t localCurrentPanelMode = DRAW_BARS_RAINBOW_VERTICAL;
   uint8_t lastPanelMode = DRAW_BARS_RAINBOW_VERTICAL;
+  uint16_t regularModeBrightness = brightness;
+  uint16_t lastSeenBrightness = brightness;
 
   while (true) {
     portENTER_CRITICAL(&g_frameMux);
@@ -58,10 +60,28 @@ void matrixTask(void *param) {
 
     const bool frameChanged = localFrame.frameId != lastSeenFrame;
     const bool panelModeChanged = localCurrentPanelMode != lastPanelMode;
+    const bool brightnessChanged = brightness != lastSeenBrightness;
 
-    if (frameChanged || panelModeChanged) {
+    if (frameChanged || panelModeChanged || brightnessChanged) {
+      if (panelModeChanged) {
+        const bool lastModeHadCustomBrightness = lastPanelMode == DRAW_OSCILLOSCOPE || lastPanelMode == DRAW_BLOBS;
+
+        if (!lastModeHadCustomBrightness) {
+          regularModeBrightness = brightness;
+        }
+
+        if (localCurrentPanelMode == DRAW_OSCILLOSCOPE) {
+          brightness = 9;
+        } else if (localCurrentPanelMode == DRAW_BLOBS) {
+          brightness = 255;
+        } else if (lastModeHadCustomBrightness) {
+          brightness = regularModeBrightness;
+        }
+      }
+
       lastSeenFrame = localFrame.frameId;
       lastPanelMode = localCurrentPanelMode;
+      lastSeenBrightness = brightness;
       if (DRAW_CASSETTE != localCurrentPanelMode)
         notInitializedCassette = true;
       switch (localCurrentPanelMode) {
@@ -89,11 +109,17 @@ void matrixTask(void *param) {
         case DRAW_OSCILLOSCOPE:
           ledPanelDrawOscilloscope(localFrame.pkt);
           break;
+        case DRAW_RAINBOW_OSCILLOSCOPE:
+          ledPanelDrawRainbowOscilloscope(localFrame.pkt);
+          break;
         case DRAW_PEAK_TRAIL:
           ledPanelDrawPeakTrail(localFrame.pkt);
           break;
         case DRAW_SCROLLING_WAVEFORM:
           ledPanelDrawScrollingWaveform(localFrame.pkt);
+          break;
+        case DRAW_RAINBOW_SCROLLING_WAVEFORM:
+          ledPanelDrawRainbowScrollingWaveform(localFrame.pkt);
           break;
         default:
           ledPanelDrawBarsRainbowVertical(localFrame.pkt);

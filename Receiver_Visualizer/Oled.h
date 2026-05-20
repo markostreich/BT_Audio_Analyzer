@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include "Buttons.h"
 #include "VisPacket.h"
 
 #define SCREEN_WIDTH 128
@@ -50,9 +51,10 @@ inline void oledDrawBars(const VisPacket &pkt) {
   oledDisplay.setTextSize(1);
   oledDisplay.setTextColor(SSD1306_WHITE);
   oledDisplay.setCursor(0, 0);
-  oledDisplay.print("Remote FFT ");
+  oledDisplay.print("FFT ");
   oledDisplay.print(pkt.peak);
-  oledDisplay.print("Hz");
+  oledDisplay.print("Hz B:");
+  oledDisplay.print(brightness);
 
   const int graphHeight = 54;
   const int barWidth = SCREEN_WIDTH / NUM_BARS;

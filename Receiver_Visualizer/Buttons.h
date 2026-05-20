@@ -19,6 +19,8 @@ constexpr uint8_t DRAW_AUDIO_BLOB = 6;
 constexpr uint8_t DRAW_OSCILLOSCOPE = 7;
 constexpr uint8_t DRAW_PEAK_TRAIL = 8;
 constexpr uint8_t DRAW_SCROLLING_WAVEFORM = 9;
+constexpr uint8_t DRAW_RAINBOW_OSCILLOSCOPE = 10;
+constexpr uint8_t DRAW_RAINBOW_SCROLLING_WAVEFORM = 11;
 
 constexpr uint8_t MATRIX_SWITCH_BUTTON = 1;
 constexpr uint8_t FIRST_MATRIX_PANEL_BUTTON = 2;
@@ -28,6 +30,8 @@ constexpr uint8_t BRIGHTNESS_RESET_BUTTON = 11;
 constexpr uint8_t OSCILLOSCOPE_BUTTON = 12;
 constexpr uint8_t PEAK_TRAIL_BUTTON = 13;
 constexpr uint8_t SCROLLING_WAVEFORM_BUTTON = 14;
+constexpr uint8_t RAINBOW_OSCILLOSCOPE_BUTTON = 15;
+constexpr uint8_t RAINBOW_SCROLLING_WAVEFORM_BUTTON = 16;
 constexpr uint8_t DEFAULT_BRIGHTNESS = 32;
 constexpr uint8_t BRIGHTNESS_STEP = 8;
 
@@ -43,8 +47,10 @@ const uint8_t panelModes[] = {
   DRAW_BARS_RAINBOW,
   DRAW_AUDIO_BLOB,
   DRAW_OSCILLOSCOPE,
+  DRAW_RAINBOW_OSCILLOSCOPE,
   DRAW_PEAK_TRAIL,
-  DRAW_SCROLLING_WAVEFORM
+  DRAW_SCROLLING_WAVEFORM,
+  DRAW_RAINBOW_SCROLLING_WAVEFORM
 };
 
 const uint8_t panelModeCount = sizeof(panelModes) / sizeof(panelModes[0]);
@@ -119,6 +125,16 @@ inline bool handleMatrixButton(uint8_t button) {
 
   if (button == SCROLLING_WAVEFORM_BUTTON) {
     setPanelMode(DRAW_SCROLLING_WAVEFORM);
+    return true;
+  }
+
+  if (button == RAINBOW_OSCILLOSCOPE_BUTTON) {
+    setPanelMode(DRAW_RAINBOW_OSCILLOSCOPE);
+    return true;
+  }
+
+  if (button == RAINBOW_SCROLLING_WAVEFORM_BUTTON) {
+    setPanelMode(DRAW_RAINBOW_SCROLLING_WAVEFORM);
     return true;
   }
 

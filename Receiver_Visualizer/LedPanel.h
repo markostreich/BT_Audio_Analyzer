@@ -202,6 +202,52 @@ inline void ledPanelDrawOscilloscope(const VisPacket &pkt) {
   pixels.show();
 }
 
+inline void ledPanelDrawRainbowOscilloscope(const VisPacket &pkt) {
+  static uint16_t hueOffset = 0;
+
+  pixels.clear();
+
+  for (int y = 0; y < size_y; y++) {
+    for (int x = 0; x < size_x; x++) {
+      drawPixel(x, y, 1, 0, 2);
+    }
+  }
+
+  int total = 0;
+  for (uint8_t i = 0; i < NUM_BARS; i++) {
+    total += pkt.bars[i];
+  }
+
+  const uint8_t energy = constrain(total / NUM_BARS, 0, 60);
+  const uint8_t value = constrain(150 + energy, 150, 230);
+  const int centerY = size_y / 2;
+  int prevY = centerY;
+
+  for (int x = 0; x < size_x; x++) {
+    const int sampleIndex = map(x, 0, size_x - 1, 0, NUM_SCOPE_SAMPLES - 1);
+    int y = map(pkt.scope[sampleIndex], 0, 255, size_y - 1, 0);
+
+    y = constrain(y, 0, size_y - 1);
+
+    const uint16_t hue = hueOffset + (uint16_t)((uint32_t)x * 65535UL / size_x);
+    const uint32_t color = pixels.gamma32(pixels.ColorHSV(hue, 255, value));
+
+    if (x > 0 && y != prevY) {
+      const int sy = y > prevY ? 1 : -1;
+      for (int yy = prevY; yy != y; yy += sy) {
+        drawPixel(x - 1, yy, color);
+      }
+    }
+    drawPixel(x, y, color);
+
+    prevY = y;
+  }
+
+  hueOffset += 768;
+  pixels.setBrightness(brightness);
+  pixels.show();
+}
+
 inline void ledPanelDrawPeakTrail(const VisPacket &pkt) {
   static uint8_t trail[size_x] = {0};
   static uint8_t hueOffset = 0;
@@ -287,6 +333,46 @@ inline void ledPanelDrawScrollingWaveform(const VisPacket &pkt) {
     prevY = y;
   }
 
+  pixels.setBrightness(brightness);
+  pixels.show();
+}
+
+inline void ledPanelDrawRainbowScrollingWaveform(const VisPacket &pkt) {
+  static uint8_t history[size_x] = {128};
+  static bool skipFrame = false;
+  static uint16_t hueOffset = 0;
+
+  skipFrame = !skipFrame;
+  if (!skipFrame) {
+    for (uint8_t x = 0; x < size_x - 1; x++) {
+      history[x] = history[x + 1];
+    }
+    history[size_x - 1] = pkt.scope[NUM_SCOPE_SAMPLES - 1];
+  }
+
+  pixels.clear();
+
+  const uint8_t energy = packetEnergy(pkt);
+  const uint8_t value = constrain(130 + energy * 2, 130, 255);
+
+  int prevY = map(history[0], 0, 255, size_y - 1, 0);
+  for (uint8_t x = 1; x < size_x; x++) {
+    const int y = constrain(map(history[x], 0, 255, size_y - 1, 0), 0, size_y - 1);
+    const uint16_t hue = hueOffset + (uint16_t)((uint32_t)x * 65535UL / size_x);
+    const uint32_t color = pixels.gamma32(pixels.ColorHSV(hue, 255, value));
+
+    if (y != prevY) {
+      const int sy = y > prevY ? 1 : -1;
+      for (int yy = prevY; yy != y; yy += sy) {
+        drawPixel(x - 1, yy, color);
+      }
+    }
+    drawPixel(x, y, color);
+
+    prevY = y;
+  }
+
+  hueOffset += 512;
   pixels.setBrightness(brightness);
   pixels.show();
 }
