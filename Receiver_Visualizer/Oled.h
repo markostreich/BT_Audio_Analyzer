@@ -56,6 +56,7 @@ inline void oledDrawBars(const VisPacket &pkt) {
   oledDisplay.print("Hz B:");
   oledDisplay.print(brightness);
 
+  const int topMargin = 10;
   const int graphHeight = 54;
   const int barWidth = SCREEN_WIDTH / NUM_BARS;
 
@@ -66,6 +67,11 @@ inline void oledDrawBars(const VisPacket &pkt) {
     int w = max(1, barWidth - 1);
 
     oledDisplay.fillRect(x, y, w, h, SSD1306_WHITE);
+
+      if (h > 2) {
+        int peakY = max(topMargin, y - 2);
+        oledDisplay.drawFastHLine(x, peakY, w, SSD1306_WHITE);
+      }
   }
 
   oledDisplay.display();

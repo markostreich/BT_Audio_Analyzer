@@ -2,6 +2,7 @@
 #include "VisPacket.h"
 #include "Oled.h"
 #include "LedPanel.h"
+#include "LedStrips.h"
 #include "Uart.h"
 #include "Buttons.h"
 
@@ -61,8 +62,9 @@ void matrixTask(void *param) {
     const bool frameChanged = localFrame.frameId != lastSeenFrame;
     const bool panelModeChanged = localCurrentPanelMode != lastPanelMode;
     const bool brightnessChanged = brightness != lastSeenBrightness;
+    const bool needsAnimationFrame = localCurrentPanelMode == DRAW_HEART_RAIN;
 
-    if (frameChanged || panelModeChanged || brightnessChanged) {
+    if (frameChanged || panelModeChanged || brightnessChanged || needsAnimationFrame) {
       if (panelModeChanged) {
         const bool lastModeHadCustomBrightness = lastPanelMode == DRAW_OSCILLOSCOPE || lastPanelMode == DRAW_BLOBS;
 
@@ -84,9 +86,14 @@ void matrixTask(void *param) {
       lastSeenBrightness = brightness;
       if (DRAW_CASSETTE != localCurrentPanelMode)
         notInitializedCassette = true;
+      if (DRAW_HEART_RAIN != localCurrentPanelMode)
+        notInitializedHeartRain = true;
       switch (localCurrentPanelMode) {
         case DRAW_BARS_RAINBOW_VERTICAL:
           ledPanelDrawBarsRainbowVertical(localFrame.pkt);
+          break;
+        case DRAW_BARS_RAINBOW_VERTICAL_PEAKS:
+          ledPanelDrawBarsRainbowVerticalPeaks(localFrame.pkt);
           break;
         case DRAW_BARS_RAINBOW_MIDDLE:
           ledPanelDrawBarsRainbowVerticalMiddle(localFrame.pkt);
@@ -121,12 +128,34 @@ void matrixTask(void *param) {
         case DRAW_RAINBOW_SCROLLING_WAVEFORM:
           ledPanelDrawRainbowScrollingWaveform(localFrame.pkt);
           break;
+        case DRAW_HEART_RAIN:
+          ledPanelDrawHeartRain(localFrame.pkt);
+          break;
         default:
           ledPanelDrawBarsRainbowVertical(localFrame.pkt);
       }
     }
 
     vTaskDelay(pdMS_TO_TICKS(5));
+  }
+}
+
+void stripTask(void *param) {
+  SharedFrame localFrame;
+  uint8_t localStripMode = STRIP_RAINBOW_CHASE;
+
+  while (true) {
+    portENTER_CRITICAL(&g_frameMux);
+    localFrame = g_sharedFrame;
+    portEXIT_CRITICAL(&g_frameMux);
+
+    portENTER_CRITICAL(&g_readButtonsMux);
+    localStripMode = currentStripMode;
+    portEXIT_CRITICAL(&g_readButtonsMux);
+
+    ledStripsDrawMode(localStripMode, localFrame.pkt);
+
+    vTaskDelay(pdMS_TO_TICKS(25));
   }
 }
 
@@ -140,6 +169,7 @@ void setup() {
   }
 
   oledShowStartup();
+  initLedOutputs();
   uartBegin();
 
   initButtons();
@@ -147,6 +177,7 @@ void setup() {
   xTaskCreatePinnedToCore(uartTask, "UART Task", 4096, nullptr, 2, nullptr, 0);
   xTaskCreatePinnedToCore(oledTask, "OLED Task", 4096, nullptr, 1, nullptr, 1);
   xTaskCreatePinnedToCore(matrixTask, "Matrix Task", 4096, nullptr, 1, nullptr, 1);
+  xTaskCreatePinnedToCore(stripTask, "Strip Task", 4096, nullptr, 1, nullptr, 1);
 }
 
 void loop() {

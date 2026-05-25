@@ -13,10 +13,12 @@ boolean notInitializedCassette = true;
 LedPanelObject cassette;
 LedPanelObject cassetteWheelA;
 LedPanelObject cassetteWheelB;
+LedPanelObject heartObject;
 float angleCassetteWheel = 0.0;
 float angleCassetteWheelB = 0.0;
+boolean notInitializedHeartRain = true;
 
-inline bool cassetteHasMusic(const VisPacket &pkt) {
+inline bool packetHasMusic(const VisPacket &pkt) {
   int total = 0;
   uint8_t maxBar = 0;
 
@@ -42,13 +44,83 @@ inline void ledPanelDrawCassette(const VisPacket &pkt) {
   drawRotatedObject(&cassetteWheelA, angleCassetteWheel);
   drawRotatedObject(&cassetteWheelB, angleCassetteWheelB);
   drawObject(&cassette);
-  if (cassetteHasMusic(pkt)) {
+  if (packetHasMusic(pkt)) {
     angleCassetteWheel -= 19.0;
     angleCassetteWheelB -= 17.0;
   }
   pixels.setBrightness(brightness);
   pixels.show();
   delay(25);
+}
+
+inline void drawHeartAt(int8_t x, int8_t y, float angle) {
+  const int originalX = heartObject.pos_x;
+  const int originalY = heartObject.pos_y;
+  const int originalRotationX = heartObject.rotationPoint_x;
+  const int originalRotationY = heartObject.rotationPoint_y;
+
+  heartObject.pos_x = x;
+  heartObject.pos_y = y;
+  heartObject.rotationPoint_x = originalRotationX + (x - originalX);
+  heartObject.rotationPoint_y = originalRotationY + (y - originalY);
+
+  drawRotatedObject(&heartObject, angle);
+
+  heartObject.pos_x = originalX;
+  heartObject.pos_y = originalY;
+  heartObject.rotationPoint_x = originalRotationX;
+  heartObject.rotationPoint_y = originalRotationY;
+}
+
+inline void ledPanelDrawHeartRain(const VisPacket &pkt) {
+  static int8_t heartY[6] = { -12, -7, -17, -4, -22, -10 };
+  static float heartAngle[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+  static const int8_t heartX[6] = { -4, 1, 6, 11, 16, 21 };
+  static const uint8_t speeds[6] = { 1, 2, 1, 1, 2, 1 };
+  static const float rotations[6] = { 2.0f, -1.6f, 1.8f, -2.2f, 1.4f, -1.8f };
+  static uint8_t frame = 0;
+
+  if (notInitializedHeartRain) {
+    heartObject = parseLedPanelJson(heart);
+    notInitializedHeartRain = false;
+  }
+
+  pixels.clear();
+
+  int total = 0;
+  for (uint8_t i = 0; i < NUM_BARS; i++) {
+    total += pkt.bars[i];
+  }
+
+  const uint8_t energy = constrain(total / NUM_BARS, 0, 60);
+
+  bool hasMusic = packetHasMusic(pkt);
+
+  for (uint8_t i = 0; i < 6; i++) {
+    drawHeartAt(heartX[i], heartY[i], heartAngle[i]);
+
+    if (hasMusic && (frame % speeds[i]) == 0) {
+      heartY[i]++;
+    }
+
+    if (hasMusic) {
+      const float musicSpin = (energy / 60.0f) * 2.4f;
+      heartAngle[i] += rotations[i] + (rotations[i] > 0.0f ? musicSpin : -musicSpin);
+    }
+    if (heartAngle[i] >= 360.0f) {
+      heartAngle[i] -= 360.0f;
+    } else if (heartAngle[i] < 0.0f) {
+      heartAngle[i] += 360.0f;
+    }
+
+    if (heartY[i] > size_y + 2) {
+      heartY[i] = -14 - (i * 3);
+    }
+  }
+
+  frame++;
+  pixels.setBrightness(constrain(brightness + energy, 1, 255));
+  pixels.show();
 }
 
 inline void ledPanelDrawBars(const VisPacket &pkt) {
@@ -125,6 +197,54 @@ inline void ledPanelDrawBarsRainbowVertical(const VisPacket &pkt) {
       }
     }
   }
+  pixels.setBrightness(brightness);
+  pixels.show();
+  firstPixelHue += 256;
+}
+
+inline void ledPanelDrawBarsRainbowVerticalPeaks(const VisPacket &pkt) {
+  static uint8_t peaks[NUM_BARS] = { 0 };
+  static uint8_t dotCount = 0;
+
+  pixels.clear();
+
+  const int graphHeight = size_y + 1;
+  const int barWidth = 2;
+  const int numBars = NUM_BARS < size_x ? NUM_BARS : size_x;
+
+  for (int i = 0; i < numBars; i++) {
+    const int x_pos = i * barWidth + 1;
+    const int h = map(pkt.bars[i], 0, 60, 0, graphHeight);
+
+    if (h > peaks[i]) {
+      peaks[i] = h;
+    }
+
+    for (int y_pos = 0; y_pos < h; ++y_pos) {
+      if (y_pos < h - 1) {
+        const int pixelHue = firstPixelHue + (x_pos * 65536L / size_x);
+        drawPixel(x_pos, y_pos, pixels.gamma32(pixels.ColorHSV(pixelHue)));
+      } else {
+        drawPixel(x_pos, y_pos, 50, 50, 50);
+      }
+    }
+
+    if (peaks[i] > 0) {
+      const int peakY = constrain((int)peaks[i] - 1, 0, size_y - 1);
+      drawPixel(x_pos, peakY, 255, 255, 255);
+    }
+  }
+
+  dotCount++;
+  if (dotCount >= 8) {
+    dotCount = 0;
+    for (uint8_t i = 0; i < NUM_BARS; i++) {
+      if (peaks[i] > 0) {
+        peaks[i]--;
+      }
+    }
+  }
+
   pixels.setBrightness(brightness);
   pixels.show();
   firstPixelHue += 256;
@@ -249,7 +369,7 @@ inline void ledPanelDrawRainbowOscilloscope(const VisPacket &pkt) {
 }
 
 inline void ledPanelDrawPeakTrail(const VisPacket &pkt) {
-  static uint8_t trail[size_x] = {0};
+  static uint8_t trail[size_x] = { 0 };
   static uint8_t hueOffset = 0;
 
   int total = 0;
@@ -309,7 +429,7 @@ inline uint8_t packetEnergy(const VisPacket &pkt) {
 }
 
 inline void ledPanelDrawScrollingWaveform(const VisPacket &pkt) {
-  static uint8_t history[size_x] = {128};
+  static uint8_t history[size_x] = { 128 };
   static bool skipFrame = false;
 
   skipFrame = !skipFrame;
@@ -338,7 +458,7 @@ inline void ledPanelDrawScrollingWaveform(const VisPacket &pkt) {
 }
 
 inline void ledPanelDrawRainbowScrollingWaveform(const VisPacket &pkt) {
-  static uint8_t history[size_x] = {128};
+  static uint8_t history[size_x] = { 128 };
   static bool skipFrame = false;
   static uint16_t hueOffset = 0;
 
@@ -424,7 +544,7 @@ inline void ledPanelDrawSpectrumHistory(const VisPacket &pkt) {
 }
 
 inline void ledPanelDrawEnvelope(const VisPacket &pkt) {
-  static uint8_t history[size_x] = {0};
+  static uint8_t history[size_x] = { 0 };
   static float smoothEnergy = 0.0f;
 
   const uint8_t energy = packetEnergy(pkt);

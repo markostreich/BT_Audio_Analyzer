@@ -15,12 +15,31 @@
 #ifndef TEST_MODE
 /** @brief Amount of pixels in the LED panel. */
 constexpr uint16_t NUMPIXELS = 600;
+constexpr uint16_t STRIP_PIXELS = 300;
 
 /** @brief LED data pin. */
 constexpr uint8_t PIN = 12;
+constexpr uint8_t RIGHT_STRIP_PIN = 25;
+constexpr uint8_t LEFT_STRIP_PIN = 27;
 
 /** @brief Interface to graphical hardware. */
 Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel rightStrip(STRIP_PIXELS, RIGHT_STRIP_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel leftStrip(STRIP_PIXELS, LEFT_STRIP_PIN, NEO_GRB + NEO_KHZ800);
+
+inline void initLedOutputs() {
+  pixels.begin();
+  rightStrip.begin();
+  leftStrip.begin();
+
+  pixels.clear();
+  rightStrip.clear();
+  leftStrip.clear();
+
+  pixels.show();
+  rightStrip.show();
+  leftStrip.show();
+}
 #endif  // not TEST_MODE
 
 /** @brief Position of the first LED in the bottommost row. */

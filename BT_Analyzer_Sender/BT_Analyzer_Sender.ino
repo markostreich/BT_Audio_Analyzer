@@ -64,7 +64,7 @@ static inline int clampi(int v, int lo, int hi) {
 void computeBandsFromFFT(double *mag, uint8_t *outBars) {
   const uint16_t bandEdges[NUM_BARS + 1] = {
     1, 2, 3, 5, 7, 10, 14, 20, 28,
-    40, 56, 78, 110, 156, 220, 312, 255
+    40, 56, 78, 110, 156, 220, 230, 255
   };
 
   static double autoLevel = 0.01;  // running loudness reference

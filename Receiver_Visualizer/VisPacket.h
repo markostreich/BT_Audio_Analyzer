@@ -4,7 +4,7 @@
 
 static constexpr uint8_t VIS_PACKET_START = 0xAA;
 static constexpr uint8_t NUM_BARS = 16;
-static constexpr uint8_t NUM_SCOPE_SAMPLES = 15;
+static constexpr uint8_t NUM_SCOPE_SAMPLES = 30;
 
 struct __attribute__((packed)) VisPacket {
   uint8_t start = VIS_PACKET_START;
